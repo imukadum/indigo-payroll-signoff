@@ -84,6 +84,15 @@ def init_db():
             responded_at TEXT,
             resolution_notes TEXT
         );
+        CREATE TABLE IF NOT EXISTS pay_periods (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            period_start TEXT NOT NULL,
+            period_end TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'open',   -- open | closed
+            closed_at TEXT,
+            closed_by TEXT,
+            UNIQUE(period_start, period_end)
+        );
         """
     )
     # --- migrations for columns added after v1 (safe to run every startup) --
@@ -159,6 +168,21 @@ def days_param(form, field_name):
     """Read a list of checked day checkboxes for a given field name, in Mon..Sun order."""
     checked = set(form.getlist(field_name))
     return ",".join(d for d in DAY_CODES if d in checked)
+
+
+def period_status(db, period_start, period_end):
+    row = db.execute(
+        "SELECT status FROM pay_periods WHERE period_start=? AND period_end=?",
+        (period_start, period_end),
+    ).fetchone()
+    return row["status"] if row else "open"
+
+
+def ensure_period_exists(db, period_start, period_end):
+    db.execute(
+        "INSERT OR IGNORE INTO pay_periods (period_start, period_end, status) VALUES (?, ?, 'open')",
+        (period_start, period_end),
+    )
 
 
 # ------------------------------------------------------------------ auth ---
@@ -289,6 +313,13 @@ def add_entry():
     if not employee_id or not period_start or not period_end or not pay_date:
         flash("Employee, pay period, and pay date are all required.", "error")
         return redirect(url_for("dashboard"))
+    if period_status(db, period_start, period_end) == "closed":
+        flash(
+            f"The pay period {format_period_label(period_start, period_end)} is closed — "
+            "reopen it from the Pay Periods page first if you need to add to it.",
+            "error",
+        )
+        return redirect(url_for("dashboard"))
     week_label = format_period_label(period_start, period_end)
     token = secrets.token_urlsafe(24)
     db.execute(
@@ -299,6 +330,7 @@ def add_entry():
         (employee_id, week_label, period_start, period_end, days_str, pay_date,
          amount_val, entered_by, now_iso(), token),
     )
+    ensure_period_exists(db, period_start, period_end)
     db.commit()
     flash("Entry created — send the confirmation link below.", "ok")
     return redirect(url_for("dashboard"))
@@ -318,6 +350,13 @@ def batch_entries():
         entered_by = request.form.get("entered_by", "Manager").strip() or "Manager"
         if not period_start or not period_end or not pay_date:
             flash("Pay period and pay date are required.", "error")
+            return redirect(url_for("batch_entries"))
+        if period_status(db, period_start, period_end) == "closed":
+            flash(
+                f"The pay period {format_period_label(period_start, period_end)} is closed — "
+                "reopen it from the Pay Periods page first if you need to add to it.",
+                "error",
+            )
             return redirect(url_for("batch_entries"))
         week_label = format_period_label(period_start, period_end)
         created = []
@@ -340,6 +379,8 @@ def batch_entries():
                  amount_val, entered_by, now_iso(), token),
             )
             created.append(emp["name"])
+        if created:
+            ensure_period_exists(db, period_start, period_end)
         db.commit()
         if created:
             flash(f"Created {len(created)} entries: {', '.join(created)}. Send each link below.", "ok")
@@ -376,12 +417,20 @@ def edit_entry(entry_id):
         if not period_start or not period_end or not pay_date:
             flash("Pay period and pay date are required.", "error")
             return redirect(url_for("edit_entry", entry_id=entry_id))
+        if period_status(db, period_start, period_end) == "closed":
+            flash(
+                f"The pay period {format_period_label(period_start, period_end)} is closed — "
+                "reopen it from the Pay Periods page first if you need to move this entry into it.",
+                "error",
+            )
+            return redirect(url_for("edit_entry", entry_id=entry_id))
         week_label = format_period_label(period_start, period_end)
         db.execute(
             """UPDATE entries SET week_label=?, period_start=?, period_end=?, days_worked=?,
                pay_date=?, amount_entered=? WHERE id=?""",
             (week_label, period_start, period_end, days_str, pay_date, amount_val, entry_id),
         )
+        ensure_period_exists(db, period_start, period_end)
         db.commit()
         flash("Entry updated.", "ok")
         return redirect(url_for("dashboard"))
@@ -447,6 +496,85 @@ def correct_entry(entry_id):
     db.commit()
     flash("Corrected entry saved — a new confirmation link is ready to send below.", "ok")
     return redirect(url_for("dashboard"))
+
+
+# -------------------------------------------------------------- periods ---
+@app.route("/periods")
+def periods():
+    guard = require_login()
+    if guard:
+        return guard
+    db = get_db()
+    period_rows = db.execute("SELECT * FROM pay_periods ORDER BY period_start DESC").fetchall()
+    summaries = []
+    for p in period_rows:
+        period_entries = db.execute(
+            entry_with_names_query()
+            + " WHERE entries.period_start=? AND entries.period_end=? ORDER BY employees.name",
+            (p["period_start"], p["period_end"]),
+        ).fetchall()
+        current = [e for e in period_entries if not e["superseded_by"]]
+        confirmed = sum(1 for e in current if e["status"] == "confirmed")
+        disputed = sum(1 for e in current if e["status"] == "disputed")
+        pending = sum(1 for e in current if e["status"] == "pending")
+        summaries.append({
+            "period": p,
+            "label": format_period_label(p["period_start"], p["period_end"]),
+            "entries": current,
+            "confirmed": confirmed,
+            "disputed": disputed,
+            "pending": pending,
+            "total_amount": sum(e["amount_entered"] for e in current),
+            "can_close": bool(current) and disputed == 0 and pending == 0,
+        })
+    return render_template("periods.html", summaries=summaries)
+
+
+@app.route("/periods/<int:period_id>/close", methods=["POST"])
+def close_period(period_id):
+    guard = require_login()
+    if guard:
+        return guard
+    db = get_db()
+    period = db.execute("SELECT * FROM pay_periods WHERE id=?", (period_id,)).fetchone()
+    if period is None:
+        flash("Pay period not found.", "error")
+        return redirect(url_for("periods"))
+    outstanding = db.execute(
+        """SELECT COUNT(*) AS c FROM entries
+           WHERE period_start=? AND period_end=? AND superseded_by IS NULL AND status != 'confirmed'""",
+        (period["period_start"], period["period_end"]),
+    ).fetchone()["c"]
+    if outstanding > 0:
+        flash(
+            f"Can't close yet — {outstanding} {'entry is' if outstanding == 1 else 'entries are'} "
+            "still pending or disputed for this period.",
+            "error",
+        )
+        return redirect(url_for("periods"))
+    closed_by = request.form.get("closed_by", "").strip() or "Manager"
+    db.execute(
+        "UPDATE pay_periods SET status='closed', closed_at=?, closed_by=? WHERE id=?",
+        (now_iso(), closed_by, period_id),
+    )
+    db.commit()
+    flash("Pay period closed — no further entries or edits can be made against it.", "ok")
+    return redirect(url_for("periods"))
+
+
+@app.route("/periods/<int:period_id>/reopen", methods=["POST"])
+def reopen_period(period_id):
+    guard = require_login()
+    if guard:
+        return guard
+    db = get_db()
+    db.execute(
+        "UPDATE pay_periods SET status='open', closed_at=NULL, closed_by=NULL WHERE id=?",
+        (period_id,),
+    )
+    db.commit()
+    flash("Pay period reopened.", "ok")
+    return redirect(url_for("periods"))
 
 
 # ------------------------------------------------------------------- CSV ---

@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block subtitle %}Pay periods &mdash; <a href="{{ url_for('dashboard') }}" style="color:#cfe0f0;">dashboard</a> &middot; <a href="{{ url_for('logout') }}" style="color:#cfe0f0;">sign out</a>{% endblock %}
+{% block content %}
+<div class="card">
+  <h2>Pay periods</h2>
+  <p class="muted">Each pay period groups every entry that shares the same start and end date. Close a period once everyone in it has confirmed — that locks it so no new entries or edits can slip in against it by mistake.</p>
+</div>
+
+{% if summaries %}
+{% for s in summaries %}
+<div class="card">
+  <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
+    <div>
+      <strong style="font-size:1.05rem;">{{ s.label }}</strong>
+      <span class="status {% if s.period.status == 'closed' %}confirmed{% else %}pending{% endif %}" style="margin-left:8px;">{{ s.period.status }}</span>
+    </div>
+    <div>
+      {% if s.period.status == 'closed' %}
+        <span class="muted" style="font-size:0.8rem;">Closed {{ s.period.closed_at|fmt_ts }}{% if s.period.closed_by %} by {{ s.period.closed_by }}{% endif %}</span>
+        <form method="post" action="{{ url_for('reopen_period', period_id=s.period.id) }}" style="display:inline;margin-left:10px;" onsubmit="return confirm('Reopen this pay period so entries can be added or edited again?');">
+          <button type="submit" class="secondary" style="padding:5px 12px;font-size:0.8rem;">Reopen</button>
+        </form>
+      {% else %}
+        <form method="post" action="{{ url_for('close_period', period_id=s.period.id) }}" style="display:inline;" onsubmit="return confirm('Close this pay period? No new entries or edits can be made against it afterward.');">
+          <input type="text" name="closed_by" placeholder="Your name" style="font-size:0.8rem;padding:6px;width:110px;display:inline-block;">
+          <button type="submit" {% if not s.can_close %}disabled title="Every entry must be confirmed first"{% endif %} style="padding:7px 14px;font-size:0.85rem;">Close period</button>
+        </form>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="stat-row" style="margin-top:14px;">
+    <div class="stat"><div class="num">${{ '%.2f'|format(s.total_amount) }}</div><div class="lbl">Total amount</div></div>
+    <div class="stat"><div class="num">{{ s.confirmed }}</div><div class="lbl">Confirmed</div></div>
+    <div class="stat"><div class="num">{{ s.pending }}</div><div class="lbl">Pending</div></div>
+    <div class="stat"><div class="num">{{ s.disputed }}</div><div class="lbl">Disputed</div></div>
+  </div>
+
+  {% if s.period.status == 'open' and not s.can_close %}
+  <p class="muted" style="margin-top:8px;">Can't close yet — {{ s.pending + s.disputed }} {{ 'entry is' if (s.pending + s.disputed) == 1 else 'entries are' }} still pending or disputed. Resolve those first (see the dashboard).</p>
+  {% endif %}
+
+  <table style="margin-top:12px;">
+    <tr><th>Employee</th><th>Amount</th><th>Days worked</th><th>Status</th></tr>
+    {% for e in s.entries %}
+    <tr>
+      <td>{{ e.employee_name }}</td>
+      <td>${{ '%.2f'|format(e.amount_entered) }}</td>
+      <td style="font-size:0.85rem;">{{ e.days_worked|days_display }}</td>
+      <td><span class="status {{ e.status }}">{{ e.status }}</span></td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+{% endfor %}
+{% else %}
+<div class="card"><p class="muted">No pay periods yet — create your first payroll entry from the dashboard.</p></div>
+{% endif %}
+{% endblock %}

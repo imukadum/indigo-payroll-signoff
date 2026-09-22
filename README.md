@@ -61,6 +61,23 @@ a written spec.
   it's just marked "corrected" instead of open. Once they confirm the
   corrected link, that entry turns green like any other.
 
+## Closing a pay period
+
+Click "pay periods" (next to "sign out" at the top of the dashboard) to
+see every pay period you've created, grouped by its start and end date,
+with a running total and a breakdown of who's confirmed, still pending,
+or disputed.
+
+Once **every** entry in a period is confirmed, a "Close period" button
+becomes clickable there — closing it locks that period so no new entries
+or edits can be created against those dates by accident, which is handy
+once you've moved on to the next pay cycle. If anyone is still pending or
+disputed, the button stays disabled until that's sorted out, so you can't
+accidentally close out a period with an open question still hanging.
+
+Closed a period by mistake, or need to add someone you forgot? Click
+"Reopen" on that period — it unlocks it again, exactly as it was.
+
 ## Adding payroll for everyone at once
 
 Instead of filling out "New payroll entry" separately for each person
