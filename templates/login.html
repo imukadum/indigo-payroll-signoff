@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block subtitle %}Manager / owner sign in{% endblock %}
+{% block content %}
+<div class="card" style="max-width:380px;margin:40px auto 0;">
+  <h2>Enter passcode</h2>
+  <form method="post">
+    <label for="passcode">Passcode</label>
+    <input type="password" id="passcode" name="passcode" autofocus required>
+    <button type="submit">Sign in</button>
+  </form>
+  <p class="muted" style="margin-top:14px;">This passcode is set by whoever deployed this app (see README.md) &mdash; ask your manager or owner if you don't have it.</p>
+</div>
+{% endblock %}

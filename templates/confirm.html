@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block subtitle %}Cash payroll confirmation{% endblock %}
+{% block content %}
+
+<div class="card center" style="max-width:480px;margin:20px auto 0;">
+  {% if e.status == 'pending' %}
+    <h2>Hi {{ e.employee_name }},</h2>
+    <p class="muted">Please confirm the cash payroll amount you received.</p>
+    <p class="muted" style="margin-bottom:0;">{{ e.week_label }} &middot; paid {{ e.pay_date }}</p>
+    <div class="big-amount">${{ '%.2f'|format(e.amount_entered) }}</div>
+
+    <form method="post" style="margin-top:10px;">
+      <input type="hidden" name="action" value="confirm">
+      <button type="submit" class="good" style="width:100%;">Yes, this is correct</button>
+    </form>
+
+    <details style="margin-top:16px;text-align:left;">
+      <summary style="cursor:pointer;color:var(--bad);font-weight:600;">No, this isn't right</summary>
+      <form method="post" style="margin-top:10px;">
+        <input type="hidden" name="action" value="dispute">
+        <label for="disputed_amount">What amount did you actually receive?</label>
+        <input type="number" step="0.01" min="0" id="disputed_amount" name="disputed_amount" placeholder="e.g. 450.00">
+        <button type="submit" class="bad" style="width:100%;">Submit dispute</button>
+      </form>
+    </details>
+
+    <p class="muted" style="margin-top:18px;">This link can only be used once. Once you respond, your manager will see it right away.</p>
+
+  {% elif e.status == 'confirmed' %}
+    <div class="status confirmed" style="font-size:0.95rem;padding:6px 16px;">CONFIRMED</div>
+    <h2 style="margin-top:14px;">Thanks, {{ e.employee_name }}!</h2>
+    <p class="muted">{{ e.week_label }} &middot; paid {{ e.pay_date }}</p>
+    <div class="big-amount">${{ '%.2f'|format(e.amount_entered) }}</div>
+    <p class="muted">You confirmed this amount on {{ e.responded_at|fmt_ts }}.</p>
+
+  {% elif e.status == 'disputed' %}
+    <div class="status disputed" style="font-size:0.95rem;padding:6px 16px;">DISPUTED</div>
+    <h2 style="margin-top:14px;">Got it, {{ e.employee_name }}.</h2>
+    <p class="muted">{{ e.week_label }} &middot; paid {{ e.pay_date }}</p>
+    <p>Manager recorded: <strong>${{ '%.2f'|format(e.amount_entered) }}</strong></p>
+    <p>You said you received:
+      <strong>{% if e.responded_amount is not none %}${{ '%.2f'|format(e.responded_amount) }}{% else %}(no amount given){% endif %}</strong>
+    </p>
+    <p class="muted">Submitted {{ e.responded_at|fmt_ts }}. Your manager or owner has been notified and will follow up with you directly.</p>
+  {% endif %}
+</div>
+
+{% endblock %}
