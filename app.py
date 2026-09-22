@@ -34,6 +34,12 @@ SMTP_HOST = os.environ.get("SMTP_HOST", "smtp.gmail.com")
 SMTP_PORT = int(os.environ.get("SMTP_PORT", "587"))
 RECIPIENT_EMAILS = [e.strip() for e in os.environ.get("RECIPIENT_EMAILS", "").split(",") if e.strip()]
 
+DAY_CODES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+DAY_FULL = {
+    "Mon": "Monday", "Tue": "Tuesday", "Wed": "Wednesday", "Thu": "Thursday",
+    "Fri": "Friday", "Sat": "Saturday", "Sun": "Sunday",
+}
+
 app = Flask(__name__)
 app.secret_key = SECRET_KEY
 
@@ -82,10 +88,17 @@ def init_db():
     )
     # --- migrations for columns added after v1 (safe to run every startup) --
     cols = {row[1] for row in db.execute("PRAGMA table_info(entries)").fetchall()}
-    if "corrected_from" not in cols:
-        db.execute("ALTER TABLE entries ADD COLUMN corrected_from INTEGER")
-    if "superseded_by" not in cols:
-        db.execute("ALTER TABLE entries ADD COLUMN superseded_by INTEGER")
+    for col, ddl in [
+        ("corrected_from", "ALTER TABLE entries ADD COLUMN corrected_from INTEGER"),
+        ("superseded_by", "ALTER TABLE entries ADD COLUMN superseded_by INTEGER"),
+        ("period_start", "ALTER TABLE entries ADD COLUMN period_start TEXT"),
+        ("period_end", "ALTER TABLE entries ADD COLUMN period_end TEXT"),
+        ("days_worked", "ALTER TABLE entries ADD COLUMN days_worked TEXT"),
+        ("responded_days", "ALTER TABLE entries ADD COLUMN responded_days TEXT"),
+        ("dispute_note", "ALTER TABLE entries ADD COLUMN dispute_note TEXT"),
+    ]:
+        if col not in cols:
+            db.execute(ddl)
     db.commit()
     db.close()
 
@@ -104,7 +117,35 @@ def fmt_ts(iso_ts):
         return iso_ts
 
 
+def days_display(days_str):
+    if not days_str:
+        return "—"
+    codes = [d for d in days_str.split(",") if d]
+    if not codes:
+        return "—"
+    return ", ".join(DAY_FULL.get(d, d) for d in codes)
+
+
+def format_period_label(start_str, end_str):
+    """Turn two ISO dates into a friendly range label, e.g. 'Sep 15 - 21, 2026'."""
+    try:
+        start = datetime.strptime(start_str, "%Y-%m-%d")
+        end = datetime.strptime(end_str, "%Y-%m-%d")
+    except (TypeError, ValueError):
+        return f"{start_str} to {end_str}"
+    if start.date() == end.date():
+        return start.strftime("%b %d, %Y")
+    if start.year != end.year:
+        return f"{start.strftime('%b %d, %Y')} - {end.strftime('%b %d, %Y')}"
+    if start.month != end.month:
+        return f"{start.strftime('%b %d')} - {end.strftime('%b %d, %Y')}"
+    return f"{start.strftime('%b')} {start.day} - {end.day}, {end.year}"
+
+
 app.jinja_env.filters["fmt_ts"] = fmt_ts
+app.jinja_env.filters["days_display"] = days_display
+app.jinja_env.globals["DAY_CODES"] = DAY_CODES
+app.jinja_env.globals["DAY_FULL"] = DAY_FULL
 
 
 def entry_with_names_query():
@@ -112,6 +153,12 @@ def entry_with_names_query():
         SELECT entries.*, employees.name AS employee_name, employees.phone AS employee_phone
         FROM entries JOIN employees ON employees.id = entries.employee_id
     """
+
+
+def days_param(form, field_name):
+    """Read a list of checked day checkboxes for a given field name, in Mon..Sun order."""
+    checked = set(form.getlist(field_name))
+    return ",".join(d for d in DAY_CODES if d in checked)
 
 
 # ------------------------------------------------------------------ auth ---
@@ -228,24 +275,29 @@ def add_entry():
         return guard
     db = get_db()
     employee_id = request.form.get("employee_id")
-    week_label = request.form.get("week_label", "").strip()
+    period_start = request.form.get("period_start", "").strip()
+    period_end = request.form.get("period_end", "").strip()
     pay_date = request.form.get("pay_date", "").strip()
     amount = request.form.get("amount", "").strip()
     entered_by = request.form.get("entered_by", "Manager").strip() or "Manager"
+    days_str = days_param(request.form, "days_worked")
     try:
         amount_val = round(float(amount), 2)
     except (TypeError, ValueError):
         flash("Enter a valid dollar amount.", "error")
         return redirect(url_for("dashboard"))
-    if not employee_id or not week_label or not pay_date:
-        flash("Employee, week, and pay date are all required.", "error")
+    if not employee_id or not period_start or not period_end or not pay_date:
+        flash("Employee, pay period, and pay date are all required.", "error")
         return redirect(url_for("dashboard"))
+    week_label = format_period_label(period_start, period_end)
     token = secrets.token_urlsafe(24)
     db.execute(
         """INSERT INTO entries
-           (employee_id, week_label, pay_date, amount_entered, entered_by, created_at, token, status)
-           VALUES (?, ?, ?, ?, ?, ?, ?, 'pending')""",
-        (employee_id, week_label, pay_date, amount_val, entered_by, now_iso(), token),
+           (employee_id, week_label, period_start, period_end, days_worked, pay_date,
+            amount_entered, entered_by, created_at, token, status)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')""",
+        (employee_id, week_label, period_start, period_end, days_str, pay_date,
+         amount_val, entered_by, now_iso(), token),
     )
     db.commit()
     flash("Entry created — send the confirmation link below.", "ok")
@@ -260,12 +312,14 @@ def batch_entries():
     db = get_db()
     employees = db.execute("SELECT * FROM employees WHERE active=1 ORDER BY name").fetchall()
     if request.method == "POST":
-        week_label = request.form.get("week_label", "").strip()
+        period_start = request.form.get("period_start", "").strip()
+        period_end = request.form.get("period_end", "").strip()
         pay_date = request.form.get("pay_date", "").strip()
         entered_by = request.form.get("entered_by", "Manager").strip() or "Manager"
-        if not week_label or not pay_date:
-            flash("Week and pay date are required.", "error")
+        if not period_start or not period_end or not pay_date:
+            flash("Pay period and pay date are required.", "error")
             return redirect(url_for("batch_entries"))
+        week_label = format_period_label(period_start, period_end)
         created = []
         for emp in employees:
             amount_raw = request.form.get(f"amount_{emp['id']}", "").strip()
@@ -275,12 +329,15 @@ def batch_entries():
                 amount_val = round(float(amount_raw), 2)
             except ValueError:
                 continue
+            days_str = days_param(request.form, f"days_{emp['id']}")
             token = secrets.token_urlsafe(24)
             db.execute(
                 """INSERT INTO entries
-                   (employee_id, week_label, pay_date, amount_entered, entered_by, created_at, token, status)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, 'pending')""",
-                (emp["id"], week_label, pay_date, amount_val, entered_by, now_iso(), token),
+                   (employee_id, week_label, period_start, period_end, days_worked, pay_date,
+                    amount_entered, entered_by, created_at, token, status)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')""",
+                (emp["id"], week_label, period_start, period_end, days_str, pay_date,
+                 amount_val, entered_by, now_iso(), token),
             )
             created.append(emp["name"])
         db.commit()
@@ -306,20 +363,24 @@ def edit_entry(entry_id):
         flash("This entry already has a response, so it can't be edited directly — use Correct & Resend instead.", "error")
         return redirect(url_for("dashboard"))
     if request.method == "POST":
-        week_label = request.form.get("week_label", "").strip()
+        period_start = request.form.get("period_start", "").strip()
+        period_end = request.form.get("period_end", "").strip()
         pay_date = request.form.get("pay_date", "").strip()
         amount = request.form.get("amount", "").strip()
+        days_str = days_param(request.form, "days_worked")
         try:
             amount_val = round(float(amount), 2)
         except (TypeError, ValueError):
             flash("Enter a valid dollar amount.", "error")
             return redirect(url_for("edit_entry", entry_id=entry_id))
-        if not week_label or not pay_date:
-            flash("Week and pay date are required.", "error")
+        if not period_start or not period_end or not pay_date:
+            flash("Pay period and pay date are required.", "error")
             return redirect(url_for("edit_entry", entry_id=entry_id))
+        week_label = format_period_label(period_start, period_end)
         db.execute(
-            "UPDATE entries SET week_label=?, pay_date=?, amount_entered=? WHERE id=?",
-            (week_label, pay_date, amount_val, entry_id),
+            """UPDATE entries SET week_label=?, period_start=?, period_end=?, days_worked=?,
+               pay_date=?, amount_entered=? WHERE id=?""",
+            (week_label, period_start, period_end, days_str, pay_date, amount_val, entry_id),
         )
         db.commit()
         flash("Entry updated.", "ok")
@@ -371,18 +432,20 @@ def correct_entry(entry_id):
     except (TypeError, ValueError):
         flash("Enter a valid corrected dollar amount.", "error")
         return redirect(url_for("dashboard"))
+    days_str = days_param(request.form, "corrected_days")
     token = secrets.token_urlsafe(24)
     cur = db.execute(
         """INSERT INTO entries
-           (employee_id, week_label, pay_date, amount_entered, entered_by, created_at, token, status, corrected_from)
-           VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?)""",
-        (entry["employee_id"], entry["week_label"], entry["pay_date"], amount_val,
-         entry["entered_by"], now_iso(), token, entry["id"]),
+           (employee_id, week_label, period_start, period_end, days_worked, pay_date,
+            amount_entered, entered_by, created_at, token, status, corrected_from)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)""",
+        (entry["employee_id"], entry["week_label"], entry["period_start"], entry["period_end"],
+         days_str, entry["pay_date"], amount_val, entry["entered_by"], now_iso(), token, entry["id"]),
     )
     new_id = cur.lastrowid
     db.execute("UPDATE entries SET superseded_by=? WHERE id=?", (new_id, entry["id"]))
     db.commit()
-    flash("Corrected amount saved — a new confirmation link is ready to send below.", "ok")
+    flash("Corrected entry saved — a new confirmation link is ready to send below.", "ok")
     return redirect(url_for("dashboard"))
 
 
@@ -393,17 +456,20 @@ def build_csv_text(db):
     writer = csv.writer(buf)
     writer.writerow(
         [
-            "Employee", "Week", "Pay Date", "Amount Entered by Manager", "Entered By",
-            "Employee Response", "Amount Employee Confirms", "Response Timestamp (UTC)",
-            "Resolution Notes", "Correction Of Entry #", "Corrected By Entry #",
+            "Employee", "Pay Period", "Pay Date", "Days Worked (Manager)", "Amount Entered by Manager",
+            "Entered By", "Employee Response", "Amount Employee Confirms", "Days Employee Confirms",
+            "Employee Note", "Response Timestamp (UTC)", "Resolution Notes",
+            "Correction Of Entry #", "Corrected By Entry #",
         ]
     )
     for e in entries:
         writer.writerow(
             [
-                e["employee_name"], e["week_label"], e["pay_date"], f'{e["amount_entered"]:.2f}',
-                e["entered_by"], e["status"],
+                e["employee_name"], e["week_label"], e["pay_date"], days_display(e["days_worked"]),
+                f'{e["amount_entered"]:.2f}', e["entered_by"], e["status"],
                 f'{e["responded_amount"]:.2f}' if e["responded_amount"] is not None else "",
+                days_display(e["responded_days"]) if e["responded_days"] else "",
+                e["dispute_note"] or "",
                 e["responded_at"] or "", e["resolution_notes"] or "",
                 e["corrected_from"] or "", e["superseded_by"] or "",
             ]
@@ -467,20 +533,24 @@ def confirm(token):
         action = request.form.get("action")
         if action == "confirm":
             db.execute(
-                "UPDATE entries SET status='confirmed', responded_amount=?, responded_at=? WHERE id=?",
-                (entry["amount_entered"], now_iso(), entry["id"]),
+                """UPDATE entries SET status='confirmed', responded_amount=?, responded_days=?,
+                   responded_at=? WHERE id=?""",
+                (entry["amount_entered"], entry["days_worked"], now_iso(), entry["id"]),
             )
             db.commit()
             return redirect(url_for("confirm", token=token))
         elif action == "dispute":
             disputed_amount = request.form.get("disputed_amount", "").strip()
             try:
-                disputed_val = round(float(disputed_amount), 2) if disputed_amount else None
+                disputed_val = round(float(disputed_amount), 2) if disputed_amount else entry["amount_entered"]
             except ValueError:
-                disputed_val = None
+                disputed_val = entry["amount_entered"]
+            disputed_days = days_param(request.form, "disputed_days")
+            dispute_note = request.form.get("dispute_note", "").strip()
             db.execute(
-                "UPDATE entries SET status='disputed', responded_amount=?, responded_at=? WHERE id=?",
-                (disputed_val, now_iso(), entry["id"]),
+                """UPDATE entries SET status='disputed', responded_amount=?, responded_days=?,
+                   dispute_note=?, responded_at=? WHERE id=?""",
+                (disputed_val, disputed_days, dispute_note, now_iso(), entry["id"]),
             )
             db.commit()
             return redirect(url_for("confirm", token=token))

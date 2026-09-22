@@ -52,12 +52,19 @@
           {% endfor %}
         </select>
       </div>
-      <div><label>Week (e.g. "Week of 09/08/2026")</label><input type="text" name="week_label" required></div>
+      <div><label>Pay period start</label><input type="date" name="period_start" required></div>
+      <div><label>Pay period end</label><input type="date" name="period_end" required></div>
     </div>
     <div class="row">
       <div><label>Pay date</label><input type="date" name="pay_date" required></div>
       <div><label>Amount paid ($)</label><input type="number" step="0.01" min="0" name="amount" required></div>
       <div><label>Entered by</label><input type="text" name="entered_by" placeholder="Manager name"></div>
+    </div>
+    <label>Days worked</label>
+    <div class="day-check-row">
+      {% for code in DAY_CODES %}
+      <label class="day-check"><input type="checkbox" name="days_worked" value="{{ code }}"> {{ code }}</label>
+      {% endfor %}
     </div>
     <button type="submit">Create entry &amp; sign-off link</button>
   </form>
@@ -72,15 +79,18 @@
   {% if entries %}
   <table>
     <tr>
-      <th>Employee</th><th>Week</th><th>Amount</th><th>Status</th><th>Employee said</th><th>Responded</th><th>Link / Actions</th>
+      <th>Employee</th><th>Pay Period</th><th>Days Worked</th><th>Amount</th><th>Status</th><th>Employee said</th><th>Responded</th><th>Link / Actions</th>
     </tr>
     {% for e in entries %}
     <tr>
       <td>{{ e.employee_name }}{% if e.corrected_from %}<br><span class="muted">(correction)</span>{% endif %}</td>
       <td>{{ e.week_label }}</td>
+      <td style="font-size:0.85rem;">{{ e.days_worked|days_display }}</td>
       <td>${{ '%.2f'|format(e.amount_entered) }}</td>
       <td><span class="status {{ e.status }}">{{ e.status }}</span></td>
-      <td>{% if e.responded_amount is not none %}${{ '%.2f'|format(e.responded_amount) }}{% else %}&mdash;{% endif %}</td>
+      <td>
+        {% if e.responded_amount is not none %}${{ '%.2f'|format(e.responded_amount) }}<br><span class="muted" style="font-size:0.78rem;">{{ e.responded_days|days_display }}</span>{% if e.dispute_note %}<br><span class="muted" style="font-size:0.78rem;">"{{ e.dispute_note }}"</span>{% endif %}{% else %}&mdash;{% endif %}
+      </td>
       <td>{{ e.responded_at|fmt_ts if e.responded_at else '&mdash;' }}</td>
       <td>
         {% if e.superseded_by %}
@@ -88,7 +98,7 @@
         {% elif e.status == 'pending' %}
           <div class="link-box">{{ base_url }}/confirm/{{ e.token }}</div>
           {% if e.employee_phone %}
-          <a class="textlink" href="sms:{{ e.employee_phone }}?&body=Hi {{ e.employee_name }}, please confirm your Indigo pay of ${{ '%.2f'|format(e.amount_entered) }} for {{ e.week_label }}: {{ base_url }}/confirm/{{ e.token }}">Tap to text this link &rarr;</a>
+          <a class="textlink" href="sms:{{ e.employee_phone }}?&body=Hi {{ e.employee_name }}, please confirm your Indigo pay of ${{ '%.2f'|format(e.amount_entered) }} for {{ e.week_label }} ({{ e.days_worked|days_display }}): {{ base_url }}/confirm/{{ e.token }}">Tap to text this link &rarr;</a>
           {% else %}
           <span class="muted">Add a phone number to get a one-tap text link.</span>
           {% endif %}
@@ -109,8 +119,14 @@
           <button type="submit" class="secondary" style="padding:6px 10px;font-size:0.8rem;">Save note</button>
         </form>
         <form method="post" action="{{ url_for('correct_entry', entry_id=e.id) }}" style="margin-top:8px;">
-          <input type="number" step="0.01" min="0" name="corrected_amount" placeholder="Corrected amount ($)" required style="font-size:0.8rem;padding:6px;">
-          <button type="submit" class="bad" style="padding:6px 10px;font-size:0.8rem;">Correct &amp; resend</button>
+          <input type="number" step="0.01" min="0" name="corrected_amount" placeholder="Corrected amount ($)" required style="font-size:0.8rem;padding:6px;width:100%;">
+          <div class="day-check-row" style="margin-top:4px;">
+            {% set suggested = (e.responded_days or e.days_worked or '').split(',') %}
+            {% for code in DAY_CODES %}
+            <label class="day-check" style="font-size:0.75rem;"><input type="checkbox" name="corrected_days" value="{{ code }}" {% if code in suggested %}checked{% endif %}> {{ code }}</label>
+            {% endfor %}
+          </div>
+          <button type="submit" class="bad" style="padding:6px 10px;font-size:0.8rem;margin-top:4px;">Correct &amp; resend</button>
         </form>
         {% endif %}
       </td>

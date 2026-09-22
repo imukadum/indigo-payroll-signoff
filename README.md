@@ -14,23 +14,29 @@ a written spec.
 
 1. You log in with a passcode.
 2. You add employees (name + phone number).
-3. For each cash payment, you type in the employee, the week, the pay
-   date, and the amount. The app creates a one-time confirmation link.
+3. For each cash payment, you type in the employee, the pay period (a
+   start date and end date — this covers weekly, bi-weekly, or monthly
+   pay however you run it), the pay date, the amount, and tick off which
+   days of the week they actually worked. The app creates a one-time
+   confirmation link.
 4. You tap "Tap to text this link" to send it from **your own phone**
    (via a normal text message — see "About the text messages" below), or
    just copy the link.
-5. The employee opens the link on their phone (no login) and taps "Yes,
-   this is correct" or opens "No, this isn't right" and types what they
-   actually received.
+5. The employee opens the link on their phone (no login) and sees the
+   amount and the days you recorded. They tap "Yes, this is correct" to
+   confirm both together, or open "No, something's wrong" to change the
+   amount, adjust which days they actually worked, and add a short note.
 6. Your dashboard updates immediately: confirmed entries turn green,
-   disputes turn red with what the employee said.
+   disputes turn red showing what the employee said about the amount,
+   the days, and their note.
 7. Once a link has been used, it's locked — visiting it again just shows
    the recorded response, so it can't be resubmitted or reused.
-8. "Download CSV" gives you a spreadsheet of every entry (employee, week,
-   amount entered, employee's response, timestamps, resolution notes) —
-   this is the file meant to feed into next month's financial workbook.
-   "Email CSV to owner & manager" sends that same file straight to your
-   inboxes (see "Emailing the CSV" below for the one-time setup).
+8. "Download CSV" gives you a spreadsheet of every entry (employee, pay
+   period, days worked, amount entered, employee's response, timestamps,
+   resolution notes) — this is the file meant to feed into next month's
+   financial workbook. "Email CSV to owner & manager" sends that same
+   file straight to your inboxes (see "Emailing the CSV" below for the
+   one-time setup).
 
 ## Fixing mistakes
 
@@ -45,24 +51,27 @@ a written spec.
   works while the entry is still "pending" (the employee hasn't tapped
   anything yet). You can also click "Delete" to remove it entirely if you
   created it by mistake.
-- **Employee already disputed the amount because it was wrong?** On that
-  disputed entry, type the correct amount into the "Corrected amount"
-  box and click "Correct & resend." This creates a brand-new one-time
-  link with the right amount for you to send them — the original
-  dispute stays on record underneath it for your audit trail, it's just
-  marked "corrected" instead of open. Once they confirm the corrected
-  link, that entry turns green like any other.
+- **Employee already disputed the amount or days because it was wrong?**
+  On that disputed entry, the "Correct & resend" box already has the
+  days pre-ticked to match what the employee said (so you're usually
+  just double-checking, not re-typing) — adjust the amount and days as
+  needed and click "Correct & resend." This creates a brand-new one-time
+  link with the corrected amount and days for you to send them — the
+  original dispute stays on record underneath it for your audit trail,
+  it's just marked "corrected" instead of open. Once they confirm the
+  corrected link, that entry turns green like any other.
 
 ## Adding payroll for everyone at once
 
 Instead of filling out "New payroll entry" separately for each person
-every week, click "Enter everyone's amount at once" (under section 2 on
-the dashboard). You'll see every active employee listed with a blank
-amount box next to their name — type in this week's amount for whoever
-you paid and leave the rest blank, fill in the week and pay date once at
-the top, and submit. That creates a sign-off link for every employee you
-entered an amount for, all at once, ready to send from the dashboard
-below.
+every period, click "Enter everyone's amount at once" (under section 2
+on the dashboard). Set the pay period and pay date once at the top, then
+you'll see every active employee listed with a blank amount box and a
+row of day checkboxes next to their name — type in the amount and tick
+the days worked for whoever you're paying this period, and leave the
+rest blank to skip them. Submitting creates a sign-off link for every
+employee you entered an amount for, all at once, ready to send from the
+dashboard below.
 
 ## About the text messages (important limitation)
 

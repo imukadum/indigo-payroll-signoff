@@ -1,22 +1,29 @@
 {% extends "base.html" %}
 {% block subtitle %}Add payroll for all employees at once{% endblock %}
 {% block content %}
-<div class="card" style="max-width:640px;margin:20px auto 0;">
-  <h2>This week's payroll — all employees</h2>
-  <p class="muted">Fill in an amount for anyone you paid this week and leave the rest blank. One submit creates a sign-off link for everyone with an amount entered.</p>
+<div class="card" style="max-width:760px;margin:20px auto 0;">
+  <h2>This pay period — all employees</h2>
+  <p class="muted">Set the pay period once below, then fill in an amount and tick the days worked for anyone you're paying this period — leave the rest blank to skip them. One submit creates a sign-off link for everyone with an amount entered.</p>
   {% if employees %}
   <form method="post">
     <div class="row">
-      <div><label for="week_label">Week (e.g. "Week of 09/22/2026")</label><input type="text" id="week_label" name="week_label" required></div>
+      <div><label for="period_start">Pay period start</label><input type="date" id="period_start" name="period_start" required></div>
+      <div><label for="period_end">Pay period end</label><input type="date" id="period_end" name="period_end" required></div>
       <div><label for="pay_date">Pay date</label><input type="date" id="pay_date" name="pay_date" required></div>
       <div><label for="entered_by">Entered by</label><input type="text" id="entered_by" name="entered_by" placeholder="Manager name"></div>
     </div>
     <table style="margin-top:14px;">
-      <tr><th>Employee</th><th>Amount ($)</th></tr>
+      <tr>
+        <th>Employee</th><th>Amount ($)</th>
+        {% for code in DAY_CODES %}<th title="{{ DAY_FULL[code] }}">{{ code[0] }}</th>{% endfor %}
+      </tr>
       {% for emp in employees %}
       <tr>
         <td>{{ emp.name }}</td>
-        <td><input type="number" step="0.01" min="0" name="amount_{{ emp.id }}" placeholder="leave blank to skip"></td>
+        <td><input type="number" step="0.01" min="0" name="amount_{{ emp.id }}" placeholder="skip"></td>
+        {% for code in DAY_CODES %}
+        <td class="day-check-cell"><input type="checkbox" name="days_{{ emp.id }}" value="{{ code }}" title="{{ DAY_FULL[code] }}"></td>
+        {% endfor %}
       </tr>
       {% endfor %}
     </table>
