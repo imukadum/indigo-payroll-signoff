@@ -8,15 +8,21 @@
   <div class="stat"><div class="num">{{ disputed_count }}</div><div class="lbl">Open disputes</div></div>
 </div>
 
+<div style="margin:4px 0 16px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+  <a class="btn secondary" href="{{ url_for('periods') }}">View &amp; close pay periods &rarr;</a>
+  <span class="muted" style="font-size:0.78rem;">This page checks for updates automatically every 20 seconds.</span>
+</div>
+
 <div class="card">
   <h2>1. Employees</h2>
   {% if employees %}
   <table>
-    <tr><th>Name</th><th>Phone</th><th>Actions</th></tr>
+    <tr><th>Name</th><th>Phone</th><th>Paid by</th><th>Actions</th></tr>
     {% for emp in employees %}
     <tr>
       <td>{{ emp.name }}</td>
       <td>{{ emp.phone or '&mdash;' }}</td>
+      <td>{{ emp.payment_method|payment_label }}</td>
       <td>
         <a href="{{ url_for('edit_employee', employee_id=emp.id) }}" style="font-size:0.85rem;">Edit</a>
         &middot;
@@ -35,6 +41,12 @@
       <div><label>Name</label><input type="text" name="name" required></div>
       <div><label>Phone (for texting the link)</label><input type="text" name="phone" placeholder="e.g. 555-123-4567"></div>
     </div>
+    <label>Usually paid by</label>
+    <div class="day-check-row">
+      <label class="day-check"><input type="radio" name="payment_method" value="cash" checked> Cash</label>
+      <label class="day-check"><input type="radio" name="payment_method" value="check"> Check</label>
+    </div>
+    <p class="muted" style="margin-top:-6px;font-size:0.78rem;">You can still change this per payment when you create an entry below.</p>
     <button type="submit" class="secondary">Add employee</button>
   </form>
 </div>
@@ -46,9 +58,9 @@
     <div class="row">
       <div>
         <label>Employee</label>
-        <select name="employee_id" required>
+        <select name="employee_id" id="entry-employee-select" required>
           {% for emp in employees %}
-          <option value="{{ emp.id }}">{{ emp.name }}</option>
+          <option value="{{ emp.id }}" data-payment="{{ emp.payment_method }}">{{ emp.name }}</option>
           {% endfor %}
         </select>
       </div>
@@ -66,8 +78,28 @@
       <label class="day-check"><input type="checkbox" name="days_worked" value="{{ code }}"> {{ code }}</label>
       {% endfor %}
     </div>
+    <label>Paid by</label>
+    <div class="day-check-row">
+      <label class="day-check"><input type="radio" name="payment_method" id="entry-pay-cash" value="cash"> Cash</label>
+      <label class="day-check"><input type="radio" name="payment_method" id="entry-pay-check" value="check"> Check</label>
+    </div>
     <button type="submit">Create entry &amp; sign-off link</button>
   </form>
+  <script>
+  (function () {
+    var sel = document.getElementById("entry-employee-select");
+    var cash = document.getElementById("entry-pay-cash");
+    var check = document.getElementById("entry-pay-check");
+    if (!sel || !cash || !check) return;
+    function syncDefault() {
+      var opt = sel.options[sel.selectedIndex];
+      var method = opt ? opt.getAttribute("data-payment") : "cash";
+      if (method === "check") { check.checked = true; } else { cash.checked = true; }
+    }
+    sel.addEventListener("change", syncDefault);
+    syncDefault();
+  })();
+  </script>
   <p class="muted" style="margin-top:14px;">Paying several people this week? <a href="{{ url_for('batch_entries') }}">Enter everyone's amount at once &rarr;</a></p>
   {% else %}
   <p class="muted">Add an employee above first.</p>
@@ -79,7 +111,7 @@
   {% if entries %}
   <table>
     <tr>
-      <th>Employee</th><th>Pay Period</th><th>Days Worked</th><th>Amount</th><th>Status</th><th>Employee said</th><th>Responded</th><th>Link / Actions</th>
+      <th>Employee</th><th>Pay Period</th><th>Days Worked</th><th>Amount</th><th>Paid By</th><th>Status</th><th>Employee said</th><th>Responded</th><th>Link / Actions</th>
     </tr>
     {% for e in entries %}
     <tr>
@@ -87,6 +119,7 @@
       <td>{{ e.week_label }}</td>
       <td style="font-size:0.85rem;">{{ e.days_worked|days_display }}</td>
       <td>${{ '%.2f'|format(e.amount_entered) }}</td>
+      <td>{{ e.payment_method|payment_label }}</td>
       <td><span class="status {{ e.status }}">{{ e.status }}</span></td>
       <td>
         {% if e.responded_amount is not none %}${{ '%.2f'|format(e.responded_amount) }}<br><span class="muted" style="font-size:0.78rem;">{{ e.responded_days|days_display }}</span>{% if e.dispute_note %}<br><span class="muted" style="font-size:0.78rem;">"{{ e.dispute_note }}"</span>{% endif %}{% else %}&mdash;{% endif %}
@@ -98,7 +131,7 @@
         {% elif e.status == 'pending' %}
           <div class="link-box">{{ base_url }}/confirm/{{ e.token }}</div>
           {% if e.employee_phone %}
-          <a class="textlink" href="sms:{{ e.employee_phone }}?&body=Hi {{ e.employee_name }}, please confirm your Indigo pay of ${{ '%.2f'|format(e.amount_entered) }} for {{ e.week_label }} ({{ e.days_worked|days_display }}): {{ base_url }}/confirm/{{ e.token }}">Tap to text this link &rarr;</a>
+          <a class="textlink" href="sms:{{ e.employee_phone }}?&body=Hi {{ e.employee_name }}, please confirm your Indigo pay of ${{ '%.2f'|format(e.amount_entered) }} for {{ e.week_label }} ({{ e.days_worked|days_display }}), paid by {{ e.payment_method|payment_label|lower }}: {{ base_url }}/confirm/{{ e.token }}">Tap to text this link &rarr;</a>
           {% else %}
           <span class="muted">Add a phone number to get a one-tap text link.</span>
           {% endif %}
@@ -126,6 +159,10 @@
             <label class="day-check" style="font-size:0.75rem;"><input type="checkbox" name="corrected_days" value="{{ code }}" {% if code in suggested %}checked{% endif %}> {{ code }}</label>
             {% endfor %}
           </div>
+          <div class="day-check-row" style="margin-top:4px;">
+            <label class="day-check" style="font-size:0.75rem;"><input type="radio" name="corrected_payment_method" value="cash" {% if e.payment_method != 'check' %}checked{% endif %}> Cash</label>
+            <label class="day-check" style="font-size:0.75rem;"><input type="radio" name="corrected_payment_method" value="check" {% if e.payment_method == 'check' %}checked{% endif %}> Check</label>
+          </div>
           <button type="submit" class="bad" style="padding:6px 10px;font-size:0.8rem;margin-top:4px;">Correct &amp; resend</button>
         </form>
         {% endif %}
@@ -147,4 +184,20 @@
   {% endif %}
 </div>
 
+<script>
+(function () {
+  var REFRESH_MS = 20000;
+  function isTyping() {
+    var el = document.activeElement;
+    if (!el) return false;
+    var tag = el.tagName;
+    return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
+  }
+  setInterval(function () {
+    if (!isTyping() && !document.hidden) {
+      window.location.reload();
+    }
+  }, REFRESH_MS);
+})();
+</script>
 {% endblock %}

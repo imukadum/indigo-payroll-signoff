@@ -9,6 +9,7 @@
     <p class="muted" style="margin-bottom:0;">Pay period: {{ e.week_label }} &middot; paid {{ e.pay_date }}</p>
     <div class="big-amount">${{ '%.2f'|format(e.amount_entered) }}</div>
     <p style="margin-top:-4px;"><strong>Days worked:</strong> {{ e.days_worked|days_display }}</p>
+    <p style="margin-top:-4px;"><strong>Paid by:</strong> {{ e.payment_method|payment_label }}</p>
 
     <form method="post" style="margin-top:10px;">
       <input type="hidden" name="action" value="confirm">
@@ -28,7 +29,7 @@
           <label class="day-check"><input type="checkbox" name="disputed_days" value="{{ code }}" {% if code in worked %}checked{% endif %}> {{ code }}</label>
           {% endfor %}
         </div>
-        <label for="dispute_note">Anything else to explain? (optional)</label>
+        <label for="dispute_note">Anything else to explain? (optional — e.g. if cash vs. check is wrong)</label>
         <input type="text" id="dispute_note" name="dispute_note" placeholder="e.g. I was out sick Wednesday">
         <button type="submit" class="bad" style="width:100%;">Submit</button>
       </form>
@@ -42,13 +43,14 @@
     <p class="muted">Pay period: {{ e.week_label }} &middot; paid {{ e.pay_date }}</p>
     <div class="big-amount">${{ '%.2f'|format(e.amount_entered) }}</div>
     <p><strong>Days worked:</strong> {{ e.days_worked|days_display }}</p>
+    <p><strong>Paid by:</strong> {{ e.payment_method|payment_label }}</p>
     <p class="muted">You confirmed this on {{ e.responded_at|fmt_ts }}.</p>
 
   {% elif e.status == 'disputed' %}
     <div class="status disputed" style="font-size:0.95rem;padding:6px 16px;">DISPUTED</div>
     <h2 style="margin-top:14px;">Got it, {{ e.employee_name }}.</h2>
     <p class="muted">Pay period: {{ e.week_label }} &middot; paid {{ e.pay_date }}</p>
-    <p>Manager recorded: <strong>${{ '%.2f'|format(e.amount_entered) }}</strong> for <strong>{{ e.days_worked|days_display }}</strong></p>
+    <p>Manager recorded: <strong>${{ '%.2f'|format(e.amount_entered) }}</strong> for <strong>{{ e.days_worked|days_display }}</strong>, paid by <strong>{{ e.payment_method|payment_label }}</strong></p>
     <p>You said:
       <strong>{% if e.responded_amount is not none %}${{ '%.2f'|format(e.responded_amount) }}{% else %}(no amount given){% endif %}</strong>
       for <strong>{{ e.responded_days|days_display }}</strong>

@@ -14,11 +14,11 @@ a written spec.
 
 1. You log in with a passcode.
 2. You add employees (name + phone number).
-3. For each cash payment, you type in the employee, the pay period (a
+3. For each payment, you type in the employee, the pay period (a
    start date and end date — this covers weekly, bi-weekly, or monthly
-   pay however you run it), the pay date, the amount, and tick off which
-   days of the week they actually worked. The app creates a one-time
-   confirmation link.
+   pay however you run it), the pay date, the amount, tick off which
+   days of the week they actually worked, and pick whether this payment
+   was Cash or Check. The app creates a one-time confirmation link.
 4. You tap "Tap to text this link" to send it from **your own phone**
    (via a normal text message — see "About the text messages" below), or
    just copy the link.
@@ -32,11 +32,23 @@ a written spec.
 7. Once a link has been used, it's locked — visiting it again just shows
    the recorded response, so it can't be resubmitted or reused.
 8. "Download CSV" gives you a spreadsheet of every entry (employee, pay
-   period, days worked, amount entered, employee's response, timestamps,
-   resolution notes) — this is the file meant to feed into next month's
-   financial workbook. "Email CSV to owner & manager" sends that same
-   file straight to your inboxes (see "Emailing the CSV" below for the
-   one-time setup).
+   period, days worked, paid by cash or check, amount entered, employee's
+   response, timestamps, resolution notes) — this is the file meant to
+   feed into next month's financial workbook. "Email CSV to owner &
+   manager" sends that same file straight to your inboxes (see "Emailing
+   the CSV" below for the one-time setup).
+
+## Cash or check?
+
+Employees who are almost always paid the same way can have that set as
+their default: when you add or edit an employee, pick "Cash" or "Check"
+under "Usually paid by." That default automatically fills in whenever you
+create a new entry for them (on the single-entry form, the "Paid by"
+choice switches to match whichever employee you pick), but you can always
+override it for a one-off payment — nothing is locked in. Every entry
+remembers its own payment method, the employee sees it on their
+confirmation page, and it shows up as its own column in the CSV export
+and on the dashboard/pay-periods tables.
 
 ## Fixing mistakes
 
@@ -63,17 +75,27 @@ a written spec.
 
 ## Closing a pay period
 
-Click "pay periods" (next to "sign out" at the top of the dashboard) to
-see every pay period you've created, grouped by its start and end date,
-with a running total and a breakdown of who's confirmed, still pending,
-or disputed.
+Click the "View & close pay periods →" button on the dashboard (or "pay
+periods" next to "sign out" at the top) to see every pay period you've
+created, grouped by its start and end date, with a running total and a
+breakdown of who's confirmed, still pending, or disputed.
 
-Once **every** entry in a period is confirmed, a "Close period" button
-becomes clickable there — closing it locks that period so no new entries
-or edits can be created against those dates by accident, which is handy
-once you've moved on to the next pay cycle. If anyone is still pending or
-disputed, the button stays disabled until that's sorted out, so you can't
-accidentally close out a period with an open question still hanging.
+Once **every** entry in a period is confirmed, the "Close period" button
+there turns blue and becomes clickable — closing it locks that period so
+no new entries or edits can be created against those dates by accident,
+which is handy once you've moved on to the next pay cycle. If anyone is
+still pending or disputed, the button stays greyed-out (and a yellow note
+above it tells you how many are left) until that's sorted out, so you
+can't accidentally close out a period with an open question still
+hanging.
+
+## Staying up to date without refreshing
+
+The dashboard and the Pay Periods page both automatically check for
+updates every 20 seconds, so if an employee confirms or disputes while
+you're looking at the screen, you'll see it update on its own — no need
+to manually reload. (It pauses while you're actively typing in a form,
+so it won't interrupt you mid-entry.)
 
 Closed a period by mistake, or need to add someone you forgot? Click
 "Reopen" on that period — it unlocks it again, exactly as it was.

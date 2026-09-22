@@ -68,7 +68,8 @@ def init_db():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL,
             phone TEXT,
-            active INTEGER NOT NULL DEFAULT 1
+            active INTEGER NOT NULL DEFAULT 1,
+            payment_method TEXT NOT NULL DEFAULT 'cash'
         );
         CREATE TABLE IF NOT EXISTS entries (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -105,9 +106,13 @@ def init_db():
         ("days_worked", "ALTER TABLE entries ADD COLUMN days_worked TEXT"),
         ("responded_days", "ALTER TABLE entries ADD COLUMN responded_days TEXT"),
         ("dispute_note", "ALTER TABLE entries ADD COLUMN dispute_note TEXT"),
+        ("payment_method", "ALTER TABLE entries ADD COLUMN payment_method TEXT NOT NULL DEFAULT 'cash'"),
     ]:
         if col not in cols:
             db.execute(ddl)
+    emp_cols = {row[1] for row in db.execute("PRAGMA table_info(employees)").fetchall()}
+    if "payment_method" not in emp_cols:
+        db.execute("ALTER TABLE employees ADD COLUMN payment_method TEXT NOT NULL DEFAULT 'cash'")
     db.commit()
     db.close()
 
@@ -151,8 +156,13 @@ def format_period_label(start_str, end_str):
     return f"{start.strftime('%b')} {start.day} - {end.day}, {end.year}"
 
 
+def payment_method_label(value):
+    return "Check" if value == "check" else "Cash"
+
+
 app.jinja_env.filters["fmt_ts"] = fmt_ts
 app.jinja_env.filters["days_display"] = days_display
+app.jinja_env.filters["payment_label"] = payment_method_label
 app.jinja_env.globals["DAY_CODES"] = DAY_CODES
 app.jinja_env.globals["DAY_FULL"] = DAY_FULL
 
@@ -168,6 +178,12 @@ def days_param(form, field_name):
     """Read a list of checked day checkboxes for a given field name, in Mon..Sun order."""
     checked = set(form.getlist(field_name))
     return ",".join(d for d in DAY_CODES if d in checked)
+
+
+def payment_method_param(form, field_name, default="cash"):
+    """Read a cash/check radio value, falling back to a safe default."""
+    val = form.get(field_name, default).strip().lower()
+    return val if val in ("cash", "check") else default
 
 
 def period_status(db, period_start, period_end):
@@ -247,9 +263,13 @@ def add_employee():
         return guard
     name = request.form.get("name", "").strip()
     phone = request.form.get("phone", "").strip()
+    payment_method = payment_method_param(request.form, "payment_method")
     if name:
         db = get_db()
-        db.execute("INSERT INTO employees (name, phone) VALUES (?, ?)", (name, phone))
+        db.execute(
+            "INSERT INTO employees (name, phone, payment_method) VALUES (?, ?, ?)",
+            (name, phone, payment_method),
+        )
         db.commit()
         flash(f"Added {name}.", "ok")
     return redirect(url_for("dashboard"))
@@ -268,10 +288,14 @@ def edit_employee(employee_id):
     if request.method == "POST":
         name = request.form.get("name", "").strip()
         phone = request.form.get("phone", "").strip()
+        payment_method = payment_method_param(request.form, "payment_method")
         if not name:
             flash("Name is required.", "error")
         else:
-            db.execute("UPDATE employees SET name=?, phone=? WHERE id=?", (name, phone, employee_id))
+            db.execute(
+                "UPDATE employees SET name=?, phone=?, payment_method=? WHERE id=?",
+                (name, phone, payment_method, employee_id),
+            )
             db.commit()
             flash(f"Updated {name}.", "ok")
             return redirect(url_for("dashboard"))
@@ -305,6 +329,7 @@ def add_entry():
     amount = request.form.get("amount", "").strip()
     entered_by = request.form.get("entered_by", "Manager").strip() or "Manager"
     days_str = days_param(request.form, "days_worked")
+    payment_method = payment_method_param(request.form, "payment_method")
     try:
         amount_val = round(float(amount), 2)
     except (TypeError, ValueError):
@@ -325,10 +350,10 @@ def add_entry():
     db.execute(
         """INSERT INTO entries
            (employee_id, week_label, period_start, period_end, days_worked, pay_date,
-            amount_entered, entered_by, created_at, token, status)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')""",
+            amount_entered, entered_by, created_at, token, status, payment_method)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)""",
         (employee_id, week_label, period_start, period_end, days_str, pay_date,
-         amount_val, entered_by, now_iso(), token),
+         amount_val, entered_by, now_iso(), token, payment_method),
     )
     ensure_period_exists(db, period_start, period_end)
     db.commit()
@@ -369,14 +394,17 @@ def batch_entries():
             except ValueError:
                 continue
             days_str = days_param(request.form, f"days_{emp['id']}")
+            payment_method = payment_method_param(
+                request.form, f"payment_method_{emp['id']}", default=emp["payment_method"]
+            )
             token = secrets.token_urlsafe(24)
             db.execute(
                 """INSERT INTO entries
                    (employee_id, week_label, period_start, period_end, days_worked, pay_date,
-                    amount_entered, entered_by, created_at, token, status)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')""",
+                    amount_entered, entered_by, created_at, token, status, payment_method)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)""",
                 (emp["id"], week_label, period_start, period_end, days_str, pay_date,
-                 amount_val, entered_by, now_iso(), token),
+                 amount_val, entered_by, now_iso(), token, payment_method),
             )
             created.append(emp["name"])
         if created:
@@ -409,6 +437,7 @@ def edit_entry(entry_id):
         pay_date = request.form.get("pay_date", "").strip()
         amount = request.form.get("amount", "").strip()
         days_str = days_param(request.form, "days_worked")
+        payment_method = payment_method_param(request.form, "payment_method")
         try:
             amount_val = round(float(amount), 2)
         except (TypeError, ValueError):
@@ -427,8 +456,8 @@ def edit_entry(entry_id):
         week_label = format_period_label(period_start, period_end)
         db.execute(
             """UPDATE entries SET week_label=?, period_start=?, period_end=?, days_worked=?,
-               pay_date=?, amount_entered=? WHERE id=?""",
-            (week_label, period_start, period_end, days_str, pay_date, amount_val, entry_id),
+               pay_date=?, amount_entered=?, payment_method=? WHERE id=?""",
+            (week_label, period_start, period_end, days_str, pay_date, amount_val, payment_method, entry_id),
         )
         ensure_period_exists(db, period_start, period_end)
         db.commit()
@@ -482,14 +511,16 @@ def correct_entry(entry_id):
         flash("Enter a valid corrected dollar amount.", "error")
         return redirect(url_for("dashboard"))
     days_str = days_param(request.form, "corrected_days")
+    payment_method = payment_method_param(request.form, "corrected_payment_method", default=entry["payment_method"])
     token = secrets.token_urlsafe(24)
     cur = db.execute(
         """INSERT INTO entries
            (employee_id, week_label, period_start, period_end, days_worked, pay_date,
-            amount_entered, entered_by, created_at, token, status, corrected_from)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)""",
+            amount_entered, entered_by, created_at, token, status, corrected_from, payment_method)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)""",
         (entry["employee_id"], entry["week_label"], entry["period_start"], entry["period_end"],
-         days_str, entry["pay_date"], amount_val, entry["entered_by"], now_iso(), token, entry["id"]),
+         days_str, entry["pay_date"], amount_val, entry["entered_by"], now_iso(), token, entry["id"],
+         payment_method),
     )
     new_id = cur.lastrowid
     db.execute("UPDATE entries SET superseded_by=? WHERE id=?", (new_id, entry["id"]))
@@ -584,16 +615,17 @@ def build_csv_text(db):
     writer = csv.writer(buf)
     writer.writerow(
         [
-            "Employee", "Pay Period", "Pay Date", "Days Worked (Manager)", "Amount Entered by Manager",
-            "Entered By", "Employee Response", "Amount Employee Confirms", "Days Employee Confirms",
-            "Employee Note", "Response Timestamp (UTC)", "Resolution Notes",
+            "Employee", "Pay Period", "Pay Date", "Paid By", "Days Worked (Manager)",
+            "Amount Entered by Manager", "Entered By", "Employee Response", "Amount Employee Confirms",
+            "Days Employee Confirms", "Employee Note", "Response Timestamp (UTC)", "Resolution Notes",
             "Correction Of Entry #", "Corrected By Entry #",
         ]
     )
     for e in entries:
         writer.writerow(
             [
-                e["employee_name"], e["week_label"], e["pay_date"], days_display(e["days_worked"]),
+                e["employee_name"], e["week_label"], e["pay_date"], payment_method_label(e["payment_method"]),
+                days_display(e["days_worked"]),
                 f'{e["amount_entered"]:.2f}', e["entered_by"], e["status"],
                 f'{e["responded_amount"]:.2f}' if e["responded_amount"] is not None else "",
                 days_display(e["responded_days"]) if e["responded_days"] else "",

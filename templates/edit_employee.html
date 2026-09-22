@@ -8,6 +8,11 @@
     <input type="text" id="name" name="name" value="{{ employee.name }}" required>
     <label for="phone">Phone (for texting the link)</label>
     <input type="text" id="phone" name="phone" value="{{ employee.phone or '' }}" placeholder="e.g. 555-123-4567">
+    <label>Usually paid by</label>
+    <div class="day-check-row">
+      <label class="day-check"><input type="radio" name="payment_method" value="cash" {% if employee.payment_method != 'check' %}checked{% endif %}> Cash</label>
+      <label class="day-check"><input type="radio" name="payment_method" value="check" {% if employee.payment_method == 'check' %}checked{% endif %}> Check</label>
+    </div>
     <button type="submit">Save changes</button>
   </form>
   <a class="btn secondary" href="{{ url_for('dashboard') }}" style="margin-top:10px;">Cancel</a>

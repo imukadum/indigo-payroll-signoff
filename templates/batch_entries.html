@@ -16,6 +16,7 @@
       <tr>
         <th>Employee</th><th>Amount ($)</th>
         {% for code in DAY_CODES %}<th title="{{ DAY_FULL[code] }}">{{ code[0] }}</th>{% endfor %}
+        <th>Paid by</th>
       </tr>
       {% for emp in employees %}
       <tr>
@@ -24,6 +25,10 @@
         {% for code in DAY_CODES %}
         <td class="day-check-cell"><input type="checkbox" name="days_{{ emp.id }}" value="{{ code }}" title="{{ DAY_FULL[code] }}"></td>
         {% endfor %}
+        <td style="white-space:nowrap;font-size:0.8rem;">
+          <label style="display:inline-flex;align-items:center;gap:2px;margin-right:6px;"><input type="radio" name="payment_method_{{ emp.id }}" value="cash" {% if emp.payment_method != 'check' %}checked{% endif %} style="width:auto;"> Cash</label>
+          <label style="display:inline-flex;align-items:center;gap:2px;"><input type="radio" name="payment_method_{{ emp.id }}" value="check" {% if emp.payment_method == 'check' %}checked{% endif %} style="width:auto;"> Check</label>
+        </td>
       </tr>
       {% endfor %}
     </table>

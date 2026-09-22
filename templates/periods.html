@@ -4,6 +4,7 @@
 <div class="card">
   <h2>Pay periods</h2>
   <p class="muted">Each pay period groups every entry that shares the same start and end date. Close a period once everyone in it has confirmed — that locks it so no new entries or edits can slip in against it by mistake.</p>
+  <p class="muted" style="font-size:0.78rem;">This page checks for updates automatically every 20 seconds.</p>
 </div>
 
 {% if summaries %}
@@ -37,16 +38,19 @@
   </div>
 
   {% if s.period.status == 'open' and not s.can_close %}
-  <p class="muted" style="margin-top:8px;">Can't close yet — {{ s.pending + s.disputed }} {{ 'entry is' if (s.pending + s.disputed) == 1 else 'entries are' }} still pending or disputed. Resolve those first (see the dashboard).</p>
+  <p style="margin-top:10px;background:var(--flag-bg);color:var(--flag);padding:8px 12px;border-radius:6px;font-size:0.85rem;">
+    Can't close yet — {{ s.pending + s.disputed }} {{ 'entry is' if (s.pending + s.disputed) == 1 else 'entries are' }} still pending or disputed below. Resolve those on the dashboard first, then come back here.
+  </p>
   {% endif %}
 
   <table style="margin-top:12px;">
-    <tr><th>Employee</th><th>Amount</th><th>Days worked</th><th>Status</th></tr>
+    <tr><th>Employee</th><th>Amount</th><th>Days worked</th><th>Paid by</th><th>Status</th></tr>
     {% for e in s.entries %}
     <tr>
       <td>{{ e.employee_name }}</td>
       <td>${{ '%.2f'|format(e.amount_entered) }}</td>
       <td style="font-size:0.85rem;">{{ e.days_worked|days_display }}</td>
+      <td>{{ e.payment_method|payment_label }}</td>
       <td><span class="status {{ e.status }}">{{ e.status }}</span></td>
     </tr>
     {% endfor %}
@@ -56,4 +60,20 @@
 {% else %}
 <div class="card"><p class="muted">No pay periods yet — create your first payroll entry from the dashboard.</p></div>
 {% endif %}
+<script>
+(function () {
+  var REFRESH_MS = 20000;
+  function isTyping() {
+    var el = document.activeElement;
+    if (!el) return false;
+    var tag = el.tagName;
+    return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
+  }
+  setInterval(function () {
+    if (!isTyping() && !document.hidden) {
+      window.location.reload();
+    }
+  }, REFRESH_MS);
+})();
+</script>
 {% endblock %}
